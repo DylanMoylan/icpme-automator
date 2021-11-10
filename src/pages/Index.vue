@@ -51,6 +51,7 @@
           title="Verify Results"
           icon="edit"
         >
+          <div class="text-bold q-mb-md">Eligible Participants:</div>
           <table class="results-table">
             <tbody>
               <q-virtual-scroll :items="filteredCsv && filteredCsv.length ? filteredCsv : ['No unique entries found.']" separator style="height: 30vh">
@@ -66,6 +67,14 @@
               </q-virtual-scroll>
             </tbody>
           </table>
+          <div class="row justify-end q-mt-sm">
+            <q-btn
+              label="Copy Email List"
+              no-caps
+              class="bg-positive text-white"
+              @click="copyEmails"
+            />
+          </div>
         </q-step>
         <template v-slot:navigation>
           <q-stepper-navigation>
@@ -103,6 +112,15 @@ export default {
     }
   },
   methods: {
+    copyEmails() {
+      const emails = this.filteredCsv.filter(item => !/email/i.test(item.email)).map(item => item.email).join('\n')
+      const text = document.createElement('textarea')
+      document.body.appendChild(text)
+      text.value = emails
+      text.select()
+      document.execCommand('copy')
+      document.body.removeChild(text)
+    },
     proceed() {
       if(this.step == 1) {
         this.readCSV()
@@ -128,20 +146,32 @@ export default {
   },
   computed: {
     filteredCsv() {
-      return this.csv ? this.csv.map((item, index) => {
-        let details = item.split(',')
-        return {
-          name: `${details[2]} ${details[1]}`,
-          email: details[3],
-          login: index == 0 ? details[7] : details[9],
-          logout: index == 0 ? details[8] : details[10],
-          viewTime: index == 0 ? details[9] : details[11]
-        }
-      }) : []
+      /**
+       * Filter the csv results based on user time viewing:
+       * - user must have $requiredTime spent while the event was live.
+       * For each user:
+       *  if their log in time <= event start, their (log out time - event start) must be >= requiredTime
+       *  if their log in time > event start, their (logout time - login time) must >= requiredTime 
+       */
+      if(this.csv) {
+        return this.csv.map((item, index) => {
+          let details = item.split(',')
+          return {
+            name: `${details[2]} ${details[1]}`,
+            email: details[3],
+            login: index == 0 ? details[7] : details[9],
+            logout: index == 0 ? details[8] : details[10],
+            viewTime: index == 0 ? details[9] : details[11]
+          }
+        })
+      } else {
+        return []
+      }
     },
     formIncomplete() {
       if(this.step == 1) {
-        return !this.file || !this.startTime.length || !this.requiredTime.length
+        // return !this.file || !this.startTime.length || !this.requiredTime.length
+        return !this.file
       }
     }
   }
