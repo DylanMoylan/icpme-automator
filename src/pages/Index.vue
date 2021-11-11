@@ -1,6 +1,6 @@
 <template>
   <q-page class="flex flex-center">
-    <div>
+    <div class="q-ma-lg">
       <q-banner class="bg-primary text-white q-px-lg text-center text-h6">
         ICPME Certificate Registration (Automated)
       </q-banner>
@@ -24,7 +24,6 @@
             stack-label
             label="Enter minimum required attendance time"
             v-model="requiredTime"
-            type="time"
             class="q-mb-sm"
           />
           <q-file
@@ -38,12 +37,6 @@
               <q-icon name="attach_file" />
             </template>
           </q-file>
-          <!-- <q-btn
-            class="bg-positive text-white"
-            label="Go"
-            @click="readCSV"
-            :disable="!file"
-          /> -->
         </q-step>
         <q-step
           :name="2"
@@ -51,10 +44,10 @@
           title="Verify Results"
           icon="edit"
         >
-          <div class="text-bold q-mb-md">Eligible Participants:</div>
+          <div class="text-bold q-mb-md">Eligible Participants: {{ eligible && eligible.length ? `(${eligible.length - 1})` : '' }}</div>
           <table class="results-table">
             <tbody>
-              <q-virtual-scroll :items="filteredCsv && filteredCsv.length ? filteredCsv : ['No unique entries found.']" separator style="height: 30vh">
+              <q-virtual-scroll :items="filteredCsv && filteredCsv.length ? eligible : ['No unique entries found.']" separator style="height: 30vh">
                 <template v-slot="{ item, index }">
                   <tr :key="`supp${index}`">
                     <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.name }}</td>
@@ -67,12 +60,36 @@
               </q-virtual-scroll>
             </tbody>
           </table>
-          <div class="row justify-end q-mt-sm">
+          <div class="row justify-end q-my-sm">
             <q-btn
               label="Copy Email List"
               no-caps
               class="bg-positive text-white"
-              @click="copyEmails"
+              @click="copyEmails('eligible')"
+            />
+          </div>
+          <div class="text-bold q-mb-md">Ineligible Participants: {{ inEligible && inEligible.length ? `(${inEligible.length - 1})` : '' }}</div>
+          <table class="results-table">
+            <tbody>
+              <q-virtual-scroll :items="filteredCsv && filteredCsv.length ? inEligible : ['No unique entries found.']" separator style="height: 30vh">
+                <template v-slot="{ item, index }">
+                  <tr :key="`supp${index}`">
+                    <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.name }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.email }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.login }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.logout }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : (item.invalidTime ? 'bg-table-invalid' : '')">{{ item.viewTime }}</td>
+                  </tr>
+                </template>
+              </q-virtual-scroll>
+            </tbody>
+          </table>
+          <div class="row justify-end q-my-sm">
+            <q-btn
+              label="Copy Email List"
+              no-caps
+              class="bg-positive text-white"
+              @click="copyEmails('inEligible')"
             />
           </div>
         </q-step>
@@ -107,13 +124,13 @@ export default {
       step: 1,
       file: null,
       csv: null,
-      startTime: '',
-      requiredTime: ''
+      startTime: '12:00',
+      requiredTime: '0:50'
     }
   },
   methods: {
-    copyEmails() {
-      const emails = this.filteredCsv.filter(item => !/email/i.test(item.email)).map(item => item.email).join('\n')
+    copyEmails(type) {
+      const emails = this[type].filter(item => !/email/i.test(item.email)).map(item => item.email).join('\n')
       const text = document.createElement('textarea')
       document.body.appendChild(text)
       text.value = emails
@@ -131,7 +148,7 @@ export default {
       const reader = new FileReader()
       reader.onload = (e) => {
         this.csv = e.target.result
-          .replace(/,+/gm, ',')
+          .replace(/,+\n/gm, ',')
           .replace(/^,\s?(\n|$)/gm, '')
           .replace(/^"([^"]+)"/gm, "$1")
           .replace(/\s+,/gm, ',')
@@ -142,36 +159,83 @@ export default {
         this.csv[this.csv.length - 1] = this.csv[this.csv.length - 1].replace(/,$/, '')
       }
       reader.readAsText(this.file)
+    },
+    toMilli(timeString) {
+      let time = timeString.split(':'),
+        minutes = parseInt(time[1]),
+        hours = parseInt(time[0])
+      return (minutes * 60000) + (hours * (60000 * 60))
+    },
+    dateToMilli(timeString) {
+      return new Date(`11/11/2021 ${timeString}`).getTime()
     }
   },
   computed: {
     filteredCsv() {
-      /**
-       * Filter the csv results based on user time viewing:
-       * - user must have $requiredTime spent while the event was live.
-       * For each user:
-       *  if their log in time <= event start, their (log out time - event start) must be >= requiredTime
-       *  if their log in time > event start, their (logout time - login time) must >= requiredTime 
-       */
       if(this.csv) {
-        return this.csv.map((item, index) => {
+        return this.csv.map(item => {
           let details = item.split(',')
+          let first = this.csv[0].split(',')
+          let firstName = first.indexOf('First Name'),
+            lastName = first.indexOf('Last Name'),
+            email = first.indexOf('Email'),
+            login = first.indexOf('Login'),
+            logout = first.indexOf('Logout'),
+            viewTime = first.indexOf('Time Viewing')
           return {
-            name: `${details[2]} ${details[1]}`,
-            email: details[3],
-            login: index == 0 ? details[7] : details[9],
-            logout: index == 0 ? details[8] : details[10],
-            viewTime: index == 0 ? details[9] : details[11]
+            name: `${details[lastName]} ${details[firstName]}`,
+            email: details[email],
+            login: details[login],
+            logout: details[logout],
+            viewTime: details[viewTime]
           }
         })
       } else {
         return []
       }
     },
+    requiredTimeToMilli() {
+      return this.toMilli(this.requiredTime)
+    },
+    eventStartToMilli() {
+      return this.dateToMilli(this.startTime)
+    },
+    eligible() {
+      /**
+       * Filter the csv results based on user time viewing:
+       * - user must have $requiredTime spent while the event was live.
+       * For each user:
+       *  if their log in time <= event start, their (log out time - event start) must be >= requiredTime
+       *  if their log in time > their log in time must event start, their (logout time - login time) must >= requiredTime 
+       */
+      return this.filteredCsv.filter((item, index) => {
+        let startTime = this.dateToMilli(item.login)
+        let endTime = this.dateToMilli(item.logout)
+        let requiredTime = this.requiredTimeToMilli
+        let viewTime = this.toMilli(item.viewTime)
+        return index == 0 || (
+          viewTime >= requiredTime &&
+          startTime <= Math.abs(this.eventStartToMilli + (10 * 60000)) &&
+          (
+            startTime <= this.eventStartToMilli ? Math.abs(endTime - this.eventStartToMilli) >= requiredTime :
+            Math.abs(endTime - this.eventStartToMilli) >= requiredTime
+          )
+        )
+      })
+    },
+    inEligible() {
+      return this.filteredCsv.filter((item, index) => {
+        return index == 0 || this.eligible.findIndex(user => item.email == user.email) < 0
+      }).map(item => {
+        return Object.assign({
+          invalidTime: !(this.toMilli(item.viewTime) >= this.toMilli(this.requiredTime))
+        }, item)
+      })
+    },
     formIncomplete() {
       if(this.step == 1) {
         // return !this.file || !this.startTime.length || !this.requiredTime.length
-        return !this.file
+        return !this.file || !this.requiredTime.length
       }
     }
   }
@@ -192,5 +256,8 @@ export default {
 .results-table td {
   border: 1px solid;
   padding: 5px;
+}
+.bg-table-invalid {
+  background-color: #dd7171;
 }
 </style>
