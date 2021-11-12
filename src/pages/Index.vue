@@ -76,9 +76,9 @@
                   <tr :key="`supp${index}`">
                     <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.name }}</td>
                     <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.email }}</td>
-                    <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.login }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : (item.invalidStart ? 'bg-table-invalid' : 'bg-table-valid')">{{ item.login }}</td>
                     <td :class="index == 0 ? 'bg-grey-4' : ''">{{ item.logout }}</td>
-                    <td :class="index == 0 ? 'bg-grey-4' : (item.invalidTime ? 'bg-table-invalid' : '')">{{ item.viewTime }}</td>
+                    <td :class="index == 0 ? 'bg-grey-4' : (item.invalidTime ? 'bg-table-invalid' : 'bg-table-valid')">{{ item.viewTime }}</td>
                   </tr>
                 </template>
               </q-virtual-scroll>
@@ -228,7 +228,8 @@ export default {
         return index == 0 || this.eligible.findIndex(user => item.email == user.email) < 0
       }).map(item => {
         return Object.assign({
-          invalidTime: !(this.toMilli(item.viewTime) >= this.toMilli(this.requiredTime))
+          invalidTime: !(this.toMilli(item.viewTime) >= this.toMilli(this.requiredTime)),
+          invalidStart: this.dateToMilli(item.login) > Math.abs(this.eventStartToMilli + (10 * 60000))
         }, item)
       })
     },
@@ -259,5 +260,8 @@ export default {
 }
 .bg-table-invalid {
   background-color: #dd7171;
+}
+.bg-table-valid {
+  background-color: #b1ffb1;
 }
 </style>
